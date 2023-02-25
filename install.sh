@@ -222,8 +222,7 @@ if [ $ignore_install_docker == 0 ]; then
     # 2.编写配置文件
     sudo tee /etc/docker/daemon.json <<-'EOF'
       {
-        "registry-mirrors": ["http://hub-mirror.c.163.com",
-          "https://docker.mirrors.ustc.edu.cn",
+        "registry-mirrors": [
           "https://mirror.ccs.tencentyun.com"
         ]
       }
@@ -285,6 +284,15 @@ else
   echo "env.properties已存在"
 fi
 
+sudo mkdir -p /etc/docker
+sudo tee /etc/docker/daemon.json <<-'EOF'
+    {
+      "registry-mirrors": [
+        "https://mirror.ccs.tencentyun.com"
+      ]
+    }
+EOF
+
 sudo docker rm -f webapp
 if [ $is_x86 == 1 ]; then
   sudo docker pull rubyangxg/jd-qinglong
@@ -344,6 +352,7 @@ fi
 #  fi
 #done
 
+
 adbotDir="$(pwd)"/adbot
 if [ $synology == 1 ]; then
   if [ ! -d $adbotDir ]; then
@@ -352,9 +361,9 @@ if [ $synology == 1 ]; then
 fi
 
 if [ $is_x86 == 1 ]; then
-  docker run -d -p $ad_port1:8080 -p $ad_port2:8090 --name=webapp -e TZ=Asia/Shanghai --privileged=true -v "$(pwd)"/env.properties:/env.properties:rw -v "$(pwd)"/adbot:/adbot --restart always rubyangxg/jd-qinglong
+  docker run -d -p $ad_port1:8080 -p $ad_port2:8090 --dns=119.29.29.29 --dns=223.5.5.5 --name=webapp -e TZ=Asia/Shanghai --privileged=true -v "$(pwd)"/env.properties:/env.properties:rw -v "$(pwd)"/adbot:/adbot --restart always rubyangxg/jd-qinglong
 else
-  docker run -d -p $ad_port1:8080 -p $ad_port2:8090 --name=webapp -e TZ=Asia/Shanghai -e "SPRING_PROFILES_ACTIVE=arm" --privileged=true -v "$(pwd)"/env.properties:/env.properties:rw -v "$(pwd)"/adbot:/adbot --restart always rubyangxg/jd-qinglong:arm
+  docker run -d -p $ad_port1:8080 -p $ad_port2:8090 --dns=119.29.29.29 --dns=223.5.5.5 --name=webapp -e TZ=Asia/Shanghai -e "SPRING_PROFILES_ACTIVE=arm" --privileged=true -v "$(pwd)"/env.properties:/env.properties:rw -v "$(pwd)"/adbot:/adbot --restart always rubyangxg/jd-qinglong:arm
 fi
 
 while [ 1 ]; do
@@ -368,8 +377,49 @@ while [ 1 ]; do
   fi
 done
 
-json='{"server_groups":[{"name":"webapp","disabled":false,"json":false,"urls":["ws://localhost:'$ad_port1'/ws/cq/"],"event_filter":[],"regex_filter":"","regex_replace":"","extra_header":{"User-Agent":["GMC"]}},{"name":"webapp_admin","disabled":false,"json":false,"urls":["ws://localhost:'$ad_port2'/ws/cq/"],"event_filter":[],"regex_filter":"","regex_replace":"","extra_header":{"User-Agent":["GMC"]}}]}'
-echo $json >./adbot/gmc_config.json
+json1=$(cat <<- EOF
+{
+        "name": "webapp",
+        "disabled": false,
+        "json": false,
+        "urls": [
+          "ws://localhost:$ad_port1/ws/cq/"
+        ],
+        "event_filter": [],
+        "regex_filter": "",
+        "regex_replace": "",
+        "extra_header": {
+          "User-Agent": [
+            "GMC"
+          ]
+        }
+      }
+EOF
+)
+json2=$(cat <<- EOF
+{
+        "name": "webapp_admin",
+        "disabled": false,
+        "json": false,
+        "urls": [
+          "ws://localhost:$ad_port2/ws/cq/"
+        ],
+        "event_filter": [],
+        "regex_filter": "",
+        "regex_replace": "",
+        "extra_header": {
+          "User-Agent": [
+            "GMC"
+          ]
+        }
+      }
+EOF
+)
+if [ ! -d "./adbot/plugins" ]; then
+    mkdir -p ./adbot/plugins
+fi
+echo $json1 >./adbot/plugins/webapp.json
+echo $json2 >./adbot/plugins/webapp_admin.json
 
 cd adbot || exit
 chmod +x adbot
@@ -466,11 +516,6 @@ done
 if [ $hasError1 == 1 -o $hasError2 == 1 ]; then
   echo "出错了，请联系作者，查看日志docker logs -f webapp"
 else
-  sed -i '/^ADONG.URL.*/d' ../env.properties
-  sed -i '$aADONG.URL=http://localhost:'$ad_port1'' ../env.properties
   echo "恭喜你安装完成，阿东网页：http://localhost:$ad_port1，阿东机器人登录入口：http://localhost:$port，外部访问请打开防火墙并且开放 $ad_port1 和 $port 端口！"
 fi
 
-#bash <(curl -s -L https://ghproxy.com/https://raw.githubusercontent.com/rubyangxg/jd-qinglong/master/install.sh)
-#sed -e '0,/localhost:[0-9]\+/ s/localhost:[0-9]\+/localhost:1245/' ./adbot/gmc_config.json
-#tac ./adbot/gmc_config.json | sed -e '0,/localhost:[0-9]\+/{s/localhost:[0-9]\+/localhost:1245/}' | tac | tee a.json
